@@ -2,7 +2,6 @@ import time
 from collections import defaultdict
 import random
 
-
 def play_regifting(gifters, num_presents):
     num_gifters = len(gifters)
     final_distribution = {}
@@ -26,7 +25,6 @@ def play_regifting(gifters, num_presents):
             for i, gifter in enumerate(gifters):
                 gifter.update_seniority(i)
             continue
-
         
         votes = [gifter.vote(distribution, num_presents, num_gifters) for gifter in gifters]
         

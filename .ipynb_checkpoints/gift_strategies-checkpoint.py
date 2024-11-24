@@ -1,5 +1,3 @@
-import numpy as np
-
 class Gifter:
     def __init__(self, name, seniority):
         self.name = name
@@ -63,6 +61,8 @@ class EgalitarianGifter(Gifter):
         return max(distribution) - min(distribution) <= 1  # Accept if distribution is nearly equal
 
 class RandomGifter(Gifter):
+    import numpy as np
+
     def propose_distribution(self, num_coins, num_gifters):
         distribution = [0] * num_gifters
         for coin in range(num_coins):
