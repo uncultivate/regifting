@@ -1,130 +1,208 @@
-import time
 from collections import defaultdict
 import random
+import time
+from typing import List, Dict, Type
+import pandas as pd
 
-
-def play_regifting(gifters, num_presents):
-    num_gifters = len(gifters)
-    final_distribution = {}
+class GiftingGame:
+    """
+    A class that manages the regifting game simulation where players propose and vote on gift distributions.
     
-    while num_gifters > 0:
-        director = gifters[0]
-        distribution = director.propose_distribution(num_presents, num_gifters)
-        print(f"\nDirector {director.name} is proposing this distribution of gifts:")
-        proposed_distribution = {}
-        for i, gifter in enumerate(gifters):
-            proposed_distribution[gifter.name] = distribution[i]
-        [print(f"{d[0]}: {d[1]}") for d in proposed_distribution.items()]
+    The game follows these rules:
+    1. Each round has a director who proposes a distribution of presents
+    2. All players vote on the distribution
+    3. If majority accepts, distribution is implemented
+    4. If rejected, director is eliminated and gets 0 presents
+    5. Game continues until a distribution is accepted or only one player remains
+    """
+    
+    def __init__(self, gifter_classes: List[Type], num_presents: int):
+        """
+        Initialize the game with gifter classes and number of presents.
         
-        if len(distribution) != num_gifters or sum(distribution) != num_presents:
-            print(f"Invalid distribution proposed by {director.name}")
-            print(f"Expected {num_gifters} shares totaling {num_presents} presents")
-            print(f"Got {len(distribution)} shares totaling {sum(distribution)} presents")
-            gifters = gifters[1:]  # Remove the director
-            num_gifters -= 1
+        Args:
+            gifter_classes: List of gifter classes to participate in the game
+            num_presents: Total number of presents to distribute
+        """
+        self.gifter_classes = gifter_classes
+        self.num_presents = num_presents
+        self.results = defaultdict(int)
+
+    def _create_gifters(self, rotation: int) -> List:
+        """
+        Create and arrange gifters for a game round.
+        
+        Args:
+            rotation: Number of positions to rotate the initial order
+            
+        Returns:
+            List of initialized gifter objects in play order
+        """
+        # Create gifters with their initial positions
+        original_order = [
+            gifter_class(f"{gifter_class.__name__}", i)
+            for i, gifter_class in enumerate(self.gifter_classes)
+        ]
+        
+        # Rotate order based on game number
+        gifters = original_order[rotation:] + original_order[:rotation]
+        
+        # Randomize non-director positions
+        return [gifters[0]] + random.sample(gifters[1:], len(gifters[1:]))
+
+    def _validate_distribution(self, distribution: List[int], num_gifters: int) -> bool:
+        """
+        Validate if a proposed distribution is valid.
+        
+        Args:
+            distribution: Proposed distribution of presents
+            num_gifters: Current number of gifters
+            
+        Returns:
+            bool: Whether distribution is valid
+        """
+        return (
+            len(distribution) == num_gifters and 
+            sum(distribution) == self.num_presents
+        )
+
+    def _process_votes(self, gifters: List, distribution: List[int]) -> Dict:
+        """
+        Collect and process votes for a proposed distribution.
+        
+        Args:
+            gifters: List of current gifters
+            distribution: Proposed distribution to vote on
+            
+        Returns:
+            Dict containing voting results and formatted tally
+        """
+        num_gifters = len(gifters)
+        votes = ['Accept' if gifter.vote(distribution, self.num_presents, num_gifters) 
+                else 'Reject' for gifter in gifters]
+        
+        voting_tally = {gifter.name: vote for gifter, vote in zip(gifters, votes)}
+        accept_count = votes.count('Accept')
+        
+        return {
+            'tally': voting_tally,
+            'accept_percentage': (accept_count / num_gifters) * 100,
+            'reject_percentage': ((num_gifters - accept_count) / num_gifters) * 100,
+            'is_accepted': accept_count >= num_gifters / 2
+        }
+
+    def play_single_game(self, gifters: List) -> Dict[str, int]:
+        """
+        Play a single game of regifting.
+        
+        Args:
+            gifters: List of gifters participating in the game
+            
+        Returns:
+            Dict mapping gifter names to their final present counts
+        """
+        num_gifters = len(gifters)
+        final_distribution = {}
+        
+        while num_gifters > 0:
+            director = gifters[0]
+            distribution = director.propose_distribution(self.num_presents, num_gifters)
+            
+            # Display proposed distribution
+            proposed_distribution = {gifter.name: count 
+                                  for gifter, count in zip(gifters, distribution)}
+            print(f"\nDirector {director.name} proposes:")
+            for name, count in proposed_distribution.items():
+                print(f"{name}: {count}")
+            
+            # Validate distribution
+            if not self._validate_distribution(distribution, num_gifters):
+                print(f"Invalid distribution from {director.name}")
+                print(f"Expected {num_gifters} shares totaling {self.num_presents}")
+                print(f"Got {len(distribution)} shares totaling {sum(distribution)}")
+                gifters = gifters[1:]
+                num_gifters -= 1
+                continue
+            
+            # Process votes
+            vote_results = self._process_votes(gifters, distribution)
+            
+            print("\nVotes:")
+            for name, vote in vote_results['tally'].items():
+                print(f"{name}: {vote}")
+            
+            print("\nVote Tally:")
+            print(f"Accept: {vote_results['accept_percentage']:.0f}%")
+            print(f"Reject: {vote_results['reject_percentage']:.0f}%\n")
+            
+            if vote_results['is_accepted']:
+                print("✅ Distribution accepted!")
+                final_distribution.update(proposed_distribution)
+                break
+            else:
+                print(f"❌ Christmas is cancelled for {director.name}! 😭")
+                print(f"{gifters[1].name} is the new director!")
+                final_distribution[director.name] = 0
+                gifters = gifters[1:]
+                num_gifters -= 1
+            
             # Update seniority of remaining gifters
             for i, gifter in enumerate(gifters):
                 gifter.update_seniority(i)
-            continue
+        
+        # Handle last gifter or incomplete distribution
+        if not final_distribution and num_gifters == 1:
+            final_distribution[gifters[0].name] = self.num_presents
+        
+        # Fill in zeros for eliminated gifters
+        for gifter in self.gifter_classes:
+            gifter_name = gifter.__name__
+            if gifter_name not in final_distribution:
+                final_distribution[gifter_name] = 0
+        
+        return final_distribution
 
+    def run_tournament(self) -> Dict[str, int]:
+        """
+        Run a full tournament of games, rotating initial director position.
         
-        votes = [gifter.vote(distribution, num_presents, num_gifters) for gifter in gifters]
+        Returns:
+            Dict containing total presents received by each gifter type
+        """
+        num_games = len(self.gifter_classes)
         
-        # Convert to 'Accept' and 'Reject'
-        votes = ['Accept' if x else 'Reject' for x in votes]
+        for game_num in range(num_games):
+            print('\n' + '#' * 70)
+            print(f"\n--- GAME {game_num + 1} ---")
+            
+            # Create and arrange gifters for this game
+            gifters = self._create_gifters(game_num)
+            
+            # Play the game
+            distribution = self.play_single_game(gifters)
+            time.sleep(1)
+            
+            # Update running totals
+            for gifter_name, presents in distribution.items():
+                self.results[gifter_name.split()[0]] += presents
+            
+            # Display results
+            print(f"\nFinal distribution for game {game_num + 1}:")
+            for i, (gifter, presents) in enumerate(distribution.items(), 1):
+                print(f"   {i}: {gifter} - {presents}")
+            
+            # Show running totals except after last game
+            if game_num < num_games - 1:
+                self._display_running_totals()
         
-        print("\nVotes:")
-        voting_tally = {}
-        for i, gifter in enumerate(gifters):
-            voting_tally[gifter.name] = votes[i]
-        [print(f"{v[0]}: {v[1]}") for v in voting_tally.items()]
+        return dict(self.results)
 
-        # Count the number of True and False values
-        true_count = votes.count('Accept')
-        false_count = votes.count('Reject')
-        
-        # Get the total number of elements
-        total_count = len(votes)
-        
-        # Calculate the percentages
-        true_percentage = (true_count / total_count) * 100
-        false_percentage = (false_count / total_count) * 100
-        
-        # Print the results
-        print("\nVote Tally:")
-        print(f"Accept: {true_percentage:.0f}%")
-        print(f"Reject: {false_percentage:.0f}%")
-        print("")
-        if true_count >= num_gifters / 2:  # Majority or tie (director has casting vote)
-            print("✅ Distribution accepted! ")
-            # Create final_distribution using gifter names as keys
-            for i, gifter in enumerate(gifters):
-                final_distribution[gifter.name] = distribution[i]
-            break
-        else:
-            print(f"❌ Christmas is cancelled for {director.name}! 😭")
-            print(f"{gifters[1].name} is the new director!")
-            final_distribution[director.name] = 0
-            gifters = gifters[1:]  # Remove the director
-            num_gifters -= 1
-            # Update seniority of remaining gifters
-            for i, gifter in enumerate(gifters):
-                gifter.update_seniority(i)
-    
-    # If no distribution was accepted, the last gifter gets all presents
-    if not final_distribution and num_gifters == 1:
-        final_distribution[gifters[0].name] = num_presents
-    
-    # Pad the final distribution with zeros for gifters whose Christmases were cancelled
-    for gifter in gifters:
-        if gifter.name not in final_distribution:
-            final_distribution[gifter.name] = 0
-    
-    return final_distribution
-
-import random
-
-def run_multiple_games(gifter_classes, num_presents):
-    results = defaultdict(int)
-    
-    # Preserve the original order of gifters
-    original_order = [
-        gifter_class(f"{gifter_class.__name__}", i)
-        for i, gifter_class in enumerate(gifter_classes)
-    ]
-    
-    num_games = len(gifter_classes)
-    
-    for i in range(num_games):
-        print('\n######################################################################')
-        print(f"\n--- GAME {i+1} ---")
-        
-        # Rotate the order of directors
-        gifters = original_order[i:] + original_order[:i]
-        
-        # Shuffle non-directors
-        non_directors = gifters[1:]
-        random.shuffle(non_directors)
-        gifters = [gifters[0]] + non_directors  # Ensure the director stays first
-        
-        # Play the game
-        distribution = play_regifting(gifters, num_presents)
-        time.sleep(1)
-        
-        # Tally results
-        for gifter in gifters:
-            results[gifter.__class__.__name__] += distribution[gifter.name]
-
-        print(f"\nFinal distribution for this game:")
-        for k, gifter in enumerate(distribution):
-            print(f"   {k + 1}: {gifter} - {distribution[gifter]}")
-
-        # Display running totals
-        df_results = pd.DataFrame(list(results.items()), columns=['Gifter Type', 'Total Presents'])
-        df_results_sorted = df_results.sort_values('Total Presents', ascending=False).reset_index(drop=True)
-        df_results_sorted.index = df_results_sorted.index + 1
-        if i < num_games - 1:
-            print("\nRunning gifts tally:")
-            print(df_results_sorted)
-    
-    return results
+    def _display_running_totals(self):
+        """Display current tournament standings in a formatted table."""
+        df_results = pd.DataFrame(list(self.results.items()), 
+                                columns=['Gifter Type', 'Total Presents'])
+        df_results_sorted = (df_results.sort_values('Total Presents', ascending=False)
+                            .reset_index(drop=True))
+        df_results_sorted.index += 1
+        print("\nRunning gifts tally:")
+        print(df_results_sorted)

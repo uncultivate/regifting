@@ -1,4 +1,4 @@
-# 🎁 The Regifting Game
+# 🎁 The Regifting Challenge
 
 A Python implementation of a multiplayer gift distribution game where players propose and vote on how to distribute presents. The game explores different strategic approaches to resource allocation and voting behavior.
 
