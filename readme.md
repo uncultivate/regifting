@@ -23,7 +23,6 @@ A Python implementation of a multiplayer gift distribution game where players pr
 ```bash
 git clone https://github.com/uncultivate/regifting
 cd regifting
-pip install -r requirements.txt
 ```
 
 ## 📝 Creating Your Own Gifter
@@ -120,7 +119,6 @@ When designing your gifter, consider:
 
 2. **As Voter**:
    - Minimum acceptable amount
-   - Whether to form voting blocks
    - When to accept/reject strategic distributions
 
 ### Distribution Validation
