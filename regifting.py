@@ -67,6 +67,8 @@ class GiftingGame:
         )
 
     def _process_votes(self, gifters: List, distribution: List[int]) -> Dict:
+        # If only one voter, they automatically accept
+
         """
         Collect and process votes for a proposed distribution.
         
@@ -78,6 +80,17 @@ class GiftingGame:
             Dict containing voting results and formatted tally
         """
         num_gifters = len(gifters)
+
+        # If there is only one voter, then 'Accept'
+        if num_gifters == 1:
+            return {
+                'tally': {gifters[0].name: 'Accept'},
+                'accept_percentage': 100.0,
+                'reject_percentage': 0.0,
+                'is_accepted': True
+            }
+        
+        # If there is more than one voter, then tally the votes
         votes = ['Accept' if gifter.vote(distribution, self.num_presents, num_gifters) 
                 else 'Reject' for gifter in gifters]
         
