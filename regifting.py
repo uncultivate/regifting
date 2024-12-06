@@ -27,6 +27,14 @@ class GiftingGame:
         self.gifter_classes = gifter_classes
         self.num_presents = num_presents
         self.results = defaultdict(int)
+        # Add statistics tracking
+        self.stats = {
+            'proposals': defaultdict(int),  # Track number of proposals per gifter
+            'accepted_proposals': defaultdict(int),  # Track accepted proposals
+            'self_gifts': defaultdict(int),  # Track gifts given to self
+            'total_gifts_distributed': defaultdict(int),  # Track total gifts distributed
+            'votes_cast': {'Accept': 0, 'Reject': 0},  # Track all votes
+        }
 
     def _create_gifters(self, rotation: int) -> List:
         """
@@ -38,9 +46,9 @@ class GiftingGame:
         Returns:
             List of initialized gifter objects in play order
         """
-        # Create gifters with their initial positions
+        # Create gifters with their initial positions and emojis
         original_order = [
-            gifter_class(f"{gifter_class.__name__}", i)
+            gifter_class(f"{gifter_class.__name__}", i)  # Default emoji if none specified
             for i, gifter_class in enumerate(self.gifter_classes)
         ]
         
@@ -67,32 +75,17 @@ class GiftingGame:
         )
 
     def _process_votes(self, gifters: List, distribution: List[int]) -> Dict:
-        # If only one voter, they automatically accept
-
-        """
-        Collect and process votes for a proposed distribution.
-        
-        Args:
-            gifters: List of current gifters
-            distribution: Proposed distribution to vote on
-            
-        Returns:
-            Dict containing voting results and formatted tally
-        """
+        """Collect and process votes for a proposed distribution."""
         num_gifters = len(gifters)
-
-        # If there is only one voter, then 'Accept'
-        if num_gifters == 1:
-            return {
-                'tally': {gifters[0].name: 'Accept'},
-                'accept_percentage': 100.0,
-                'reject_percentage': 0.0,
-                'is_accepted': True
-            }
         
-        # If there is more than one voter, then tally the votes
-        votes = ['Accept' if gifter.vote(distribution, self.num_presents, num_gifters) 
-                else 'Reject' for gifter in gifters]
+        votes = ['Accept']  # Director's vote
+        votes.extend(['Accept' if gifter.vote(distribution, self.num_presents, num_gifters) 
+                     else 'Reject' for gifter in gifters[1:]])
+        
+        # Track individual votes (excluding director's vote)
+        for gifter, vote in zip(gifters[1:], votes[1:]):
+            self.stats[('votes', gifter.__class__.__name__, vote)] = \
+                self.stats.get(('votes', gifter.__class__.__name__, vote), 0) + 1
         
         voting_tally = {gifter.name: vote for gifter, vote in zip(gifters, votes)}
         accept_count = votes.count('Accept')
@@ -117,16 +110,22 @@ class GiftingGame:
         num_gifters = len(gifters)
         final_distribution = {}
         
+        # Update seniority of all gifters at the start
+        for i, gifter in enumerate(gifters):
+            gifter.update_seniority(i)
+        
         while num_gifters > 0:
             director = gifters[0]
             distribution = director.propose_distribution(self.num_presents, num_gifters)
             
+            # Track proposal statistics
+            self.stats['proposals'][director.__class__.__name__] += 1
+            
             # Display proposed distribution
-            proposed_distribution = {gifter.name: count 
-                                  for gifter, count in zip(gifters, distribution)}
-            print(f"\nDirector {director.name} proposes:")
-            for name, count in proposed_distribution.items():
-                print(f"{name}: {count}")
+            print(f"\nDirector {director.name} {director.emoji} proposes:")
+            
+            for i, (gifter, count) in enumerate(zip(gifters, distribution)):
+                print(f"{i + 1}. {gifter.name} {gifter.emoji}: {count}")
             
             # Validate distribution
             if not self._validate_distribution(distribution, num_gifters):
@@ -141,20 +140,26 @@ class GiftingGame:
             vote_results = self._process_votes(gifters, distribution)
             
             print("\nVotes:")
-            for name, vote in vote_results['tally'].items():
-                print(f"{name}: {vote}")
+            for i, (name, vote) in enumerate(vote_results['tally'].items()):
+                # Find the matching gifter to get their emoji
+                gifter = next(g for g in gifters if g.name == name)
+                print(f"{i + 1}. {name} {gifter.emoji}: {vote}")
             
             print("\nVote Tally:")
             print(f"Accept: {vote_results['accept_percentage']:.0f}%")
             print(f"Reject: {vote_results['reject_percentage']:.0f}%\n")
             
             if vote_results['is_accepted']:
+                self.stats['accepted_proposals'][director.__class__.__name__] += 1
+                # Track self-gifts and total gifts distributed
+                self.stats['self_gifts'][director.__class__.__name__] += distribution[0]
+                self.stats['total_gifts_distributed'][director.__class__.__name__] += sum(distribution)
                 print("✅ Distribution accepted!")
-                final_distribution.update(proposed_distribution)
+                final_distribution.update({gifter.name: count for gifter, count in zip(gifters, distribution)})
                 break
             else:
-                print(f"❌ Christmas is cancelled for {director.name}! 😭")
-                print(f"{gifters[1].name} is the new director!")
+                print(f"Christmas is cancelled for {director.name} {director.emoji}!")
+                print(f"{gifters[1].name} {gifters[1].emoji} is the new director!")
                 final_distribution[director.name] = 0
                 gifters = gifters[1:]
                 num_gifters -= 1
@@ -175,6 +180,44 @@ class GiftingGame:
         
         return final_distribution
 
+    def display_final_statistics(self):
+        """Display comprehensive game statistics."""
+        print("\n" + "="*50)
+        print("🎉 FINAL GAME STATISTICS 🎉")
+        print("="*50)
+        
+        # Proposal Success Rates
+        print("\n📊 Proposal Success Rates:")
+        for gifter in self.gifter_classes:
+            name = gifter.__name__
+            proposals = self.stats['proposals'][name]
+            accepted = self.stats['accepted_proposals'][name]
+            if proposals > 0:
+                success_rate = (accepted / proposals) * 100
+                print(f"{name}: {success_rate:.1f}% ({accepted}/{proposals} proposals accepted)")
+        
+        # Self-Gifting Behavior
+        print("\n🎁 Self-Gifting Behavior:")
+        for gifter in self.gifter_classes:
+            name = gifter.__name__
+            self_gifts = self.stats['self_gifts'][name]
+            total_distributed = self.stats['total_gifts_distributed'][name]
+            if total_distributed > 0:
+                self_gift_rate = (self_gifts / total_distributed) * 100
+                print(f"{name}: {self_gift_rate:.1f}% of distributed gifts kept for self")
+        
+        # Individual Voting Patterns
+        print("\n🗳️ Individual Voting Patterns (non-director):")
+        for gifter in self.gifter_classes:
+            name = gifter.__name__
+            accepts = self.stats.get(('votes', name, 'Accept'), 0)
+            rejects = self.stats.get(('votes', name, 'Reject'), 0)
+            total_votes = accepts + rejects
+            if total_votes > 0:
+                accept_rate = (accepts / total_votes) * 100
+                reject_rate = (rejects / total_votes) * 100
+                print(f"{name}: Accept {accept_rate:.1f}% | Reject {reject_rate:.1f}% ({total_votes} votes cast)")
+
     def run_tournament(self) -> Dict[str, int]:
         """
         Run a full tournament of games, rotating initial director position.
@@ -185,8 +228,11 @@ class GiftingGame:
         num_games = len(self.gifter_classes)
         
         for game_num in range(num_games):
-            print('\n' + '#' * 70)
-            print(f"\n--- GAME {game_num + 1} ---")
+            print(f"""
+                ╔══════════════════╗
+                ║      GAME {game_num + 1:<4}   ║
+                ╚══════════════════╝
+                """)
             
             # Create and arrange gifters for this game
             gifters = self._create_gifters(game_num)
@@ -207,6 +253,9 @@ class GiftingGame:
             # Show running totals except after last game
             if game_num < num_games - 1:
                 self._display_running_totals()
+        
+        # Add this at the end of the method, before returning
+        self.display_final_statistics()
         
         return dict(self.results)
 

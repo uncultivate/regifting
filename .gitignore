@@ -19,5 +19,5 @@ Thumbs.db
 # Ignore submissions db
 submissions.db
 
-run_game_master.ipynb 
-gift_strategies_master.py
+#run_game_master.ipynb 
+#gift_strategies_master.py
