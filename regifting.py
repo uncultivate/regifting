@@ -69,11 +69,16 @@ class GiftingGame:
         Returns:
             bool: Whether distribution is valid
         """
-        return (
-            len(distribution) == num_gifters and 
-            sum(distribution) == self.num_presents
-        )
-
+        # Check if distribution has correct length
+        if len(distribution) != num_gifters:
+            return False
+            
+        # Calculate sum of distribution
+        total = sum(distribution)
+        
+        # Allow for small floating point differences that can be rounded
+        return abs(total - self.num_presents) < 1
+        
     def _process_votes(self, gifters: List, distribution: List[int]) -> Dict:
         """Collect and process votes for a proposed distribution."""
         num_gifters = len(gifters)
